@@ -25,9 +25,6 @@ export async function GET(request: NextRequest) {
         },
         createdBy: {
           select: { id: true, name: true, email: true }
-        },
-        _count: {
-          select: { tasks: true }
         }
       },
       orderBy: { receivedDate: 'desc' }
@@ -46,23 +43,35 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    
+    const {
+      clientId,
+      noticeType,
+      noticeNumber,
+      receivedDate,
+      responseDue,
+      assignedToId,
+      documentUrl,
+      createdById
+    } = body
+
+    // Validate required fields
+    if (!clientId || !noticeType || !receivedDate || !responseDue || !createdById) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      )
+    }
+
     const notice = await db.iRSNotice.create({
       data: {
-        clientId: body.clientId,
-        noticeType: body.noticeType,
-        noticeNumber: body.noticeNumber,
-        receivedDate: new Date(body.receivedDate),
-        responseDue: new Date(body.responseDue),
-        status: body.status || 'RECEIVED',
-        assignedToId: body.assignedToId,
-        summary: body.summary,
-        explanation: body.explanation,
-        actionItems: body.actionItems,
-        documentUrl: body.documentUrl,
-        responseDraft: body.responseDraft,
-        notes: body.notes,
-        createdById: body.createdById
+        clientId,
+        noticeType,
+        noticeNumber,
+        receivedDate: new Date(receivedDate),
+        responseDue: new Date(responseDue),
+        assignedToId,
+        documentUrl,
+        createdById
       },
       include: {
         client: {

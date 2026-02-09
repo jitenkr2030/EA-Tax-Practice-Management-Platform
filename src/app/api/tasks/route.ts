@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       where: whereClause,
       include: {
         taxReturn: {
-          select: { id: true, taxYear: true, type: true, status: returnStatus }
+          select: { id: true, taxYear: true, type: true, status: true }
         },
         client: {
           select: { id: true, clientId: true, firstName: true, lastName: true, businessName: true }
@@ -32,14 +32,10 @@ export async function GET(request: NextRequest) {
           select: { id: true, name: true, email: true }
         },
         engagement: {
-          select: { id: true, taxYear: true, type: true }
+          select: { id: true, taxYear: true, type: true, status: true }
         }
       },
-      orderBy: [
-        { priority: 'desc' },
-        { dueDate: 'asc' },
-        { createdAt: 'desc' }
-      ]
+      orderBy: { dueDate: 'asc' }
     })
 
     return NextResponse.json(tasks)
@@ -55,24 +51,43 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    
+    const {
+      title,
+      description,
+      type,
+      priority,
+      assignedToId,
+      dueDate,
+      taxReturnId,
+      clientId,
+      engagementId,
+      createdBy
+    } = body
+
+    // Validate required fields
+    if (!title || !type || !createdBy) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      )
+    }
+
     const task = await db.task.create({
       data: {
-        taxReturnId: body.taxReturnId,
-        clientId: body.clientId,
-        engagementId: body.engagementId,
-        title: body.title,
-        description: body.description,
-        type: body.type,
-        status: body.status || 'PENDING',
-        priority: body.priority || 'MEDIUM',
-        assignedToId: body.assignedToId,
-        dueDate: body.dueDate ? new Date(body.dueDate) : null,
-        createdBy: body.createdBy
+        title,
+        description,
+        type,
+        priority,
+        assignedToId,
+        dueDate: dueDate ? new Date(dueDate) : null,
+        taxReturnId,
+        clientId,
+        engagementId,
+        createdBy
       },
       include: {
         taxReturn: {
-          select: { id: true, taxYear: true, type: true, status: returnStatus }
+          select: { id: true, taxYear: true, type: true, status: true }
         },
         client: {
           select: { id: true, clientId: true, firstName: true, lastName: true, businessName: true }
@@ -82,6 +97,9 @@ export async function POST(request: NextRequest) {
         },
         creator: {
           select: { id: true, name: true, email: true }
+        },
+        engagement: {
+          select: { id: true, taxYear: true, type: true, status: true }
         }
       }
     })

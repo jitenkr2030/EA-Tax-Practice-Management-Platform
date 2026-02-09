@@ -1,0 +1,16 @@
+
+> taxpro-practice-management@1.0.0 start
+> NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log
+
+▲ Next.js 16.1.6
+- Local:         http://localhost:3000
+- Network:       http://0.0.0.0:3000
+
+✓ Starting...
+✓ Ready in 69ms
+prisma:query SELECT `main`.`tasks`.`id`, `main`.`tasks`.`taxReturnId`, `main`.`tasks`.`clientId`, `main`.`tasks`.`engagementId`, `main`.`tasks`.`title`, `main`.`tasks`.`description`, `main`.`tasks`.`type`, `main`.`tasks`.`status`, `main`.`tasks`.`priority`, `main`.`tasks`.`assignedToId`, `main`.`tasks`.`dueDate`, `main`.`tasks`.`completedAt`, `main`.`tasks`.`createdBy`, `main`.`tasks`.`createdAt`, `main`.`tasks`.`updatedAt` FROM `main`.`tasks` WHERE 1=1 ORDER BY `main`.`tasks`.`dueDate` ASC LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`tax_returns`.`id`, `main`.`tax_returns`.`taxYear`, `main`.`tax_returns`.`type`, `main`.`tax_returns`.`status` FROM `main`.`tax_returns` WHERE `main`.`tax_returns`.`id` IN (?) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`client_profiles`.`id`, `main`.`client_profiles`.`clientId`, `main`.`client_profiles`.`firstName`, `main`.`client_profiles`.`lastName`, `main`.`client_profiles`.`businessName` FROM `main`.`client_profiles` WHERE `main`.`client_profiles`.`id` IN (?) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`users`.`id`, `main`.`users`.`name`, `main`.`users`.`email` FROM `main`.`users` WHERE `main`.`users`.`id` IN (?) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`users`.`id`, `main`.`users`.`name`, `main`.`users`.`email` FROM `main`.`users` WHERE `main`.`users`.`id` IN (?) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`engagements`.`id`, `main`.`engagements`.`taxYear`, `main`.`engagements`.`type`, `main`.`engagements`.`status` FROM `main`.`engagements` WHERE `main`.`engagements`.`id` IN (?) LIMIT ? OFFSET ?

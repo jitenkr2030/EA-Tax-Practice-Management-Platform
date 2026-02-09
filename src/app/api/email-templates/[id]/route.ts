@@ -20,6 +20,7 @@ export async function GET(
         { error: 'Template not found' },
         { status: 404 }
       )
+    }
 
     return NextResponse.json(template)
   } catch (error) {

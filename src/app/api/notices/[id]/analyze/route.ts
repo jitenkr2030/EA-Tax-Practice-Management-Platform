@@ -26,10 +26,10 @@ export async function POST(
     let aiAnalysis = {
       summary: '',
       explanation: '',
-      actionItems: [],
+      actionItems: [] as string[],
       riskLevel: 'LOW' as 'LOW' | 'MEDIUM' | 'HIGH',
       estimatedTimeToResolve: 0,
-      suggestedDocuments: []
+      suggestedDocuments: [] as string[]
     }
 
     // Simulate AI analysis based on notice type
@@ -58,44 +58,60 @@ export async function POST(
           actionItems: [
             'Verify the tax amount calculation',
             'Check if payments were applied correctly',
-            'Arrange payment plan if unable to pay in full',
-            'Consider penalty abatement if eligible'
+            'Arrange payment or installment agreement',
+            'Consider penalty abatement request if eligible'
           ],
           riskLevel: 'HIGH',
           estimatedTimeToResolve: 60,
-          suggestedDocuments: ['PAYMENT_RECORDS', 'TAX_RETURN', 'BANK_STATEMENT']
+          suggestedDocuments: ['PAYMENT_CONFIRMATION', 'BANK_STATEMENT', 'TAX_RETURN']
         }
         break
         
-      case 'CP05':
+      case 'CP501':
         aiAnalysis = {
-          summary: 'Information request - IRS needs additional information',
-          explanation: 'The IRS is requesting additional information to process your tax return or verify your identity.',
+          summary: 'Reminder notice - You have an unpaid tax balance',
+          explanation: 'This is a reminder that you still have an unpaid tax balance. The IRS has not received payment for previous notices.',
           actionItems: [
-            'Gather requested documentation',
-            'Respond before the deadline',
-            'Keep copies of all correspondence',
-            'Follow up if no response received'
+            'Review previous notices',
+            'Check payment status',
+            'Make immediate payment to avoid levy',
+            'Consider collection alternatives'
           ],
-          riskLevel: 'LOW',
+          riskLevel: 'HIGH',
+          estimatedTimeToResolve: 45,
+          suggestedDocuments: ['PAYMENT_CONFIRMATION', 'PREVIOUS_NOTICES', 'BANK_STATEMENT']
+        }
+        break
+        
+      case 'CP504':
+        aiAnalysis = {
+          summary: 'Urgent notice - Intent to levy',
+          explanation: 'This is an urgent notice indicating the IRS intends to levy your assets if payment is not made immediately.',
+          actionItems: [
+            'Contact IRS immediately to prevent levy',
+            'Arrange payment or installment agreement',
+            'File Collection Due Process appeal if appropriate',
+            'Consider offer in compromise if unable to pay full amount'
+          ],
+          riskLevel: 'HIGH',
           estimatedTimeToResolve: 30,
-          suggestedDocuments: ['ID_DOCUMENT', 'SOCIAL_SECURITY_CARD', 'PROOF_OF_INCOME']
+          suggestedDocuments: ['FINANCIAL_STATEMENTS', 'PAYMENT_PROOF', 'INCOME_DOCUMENTS']
         }
         break
         
       default:
         aiAnalysis = {
           summary: 'IRS notice received - Review required',
-          explanation: 'This IRS notice requires your attention. Please review the details and take appropriate action.',
+          explanation: 'This IRS notice requires attention. Please review the notice details and follow the instructions provided.',
           actionItems: [
             'Read the notice carefully',
-            'Determine the required action',
-            'Gather supporting documentation',
-            'Respond by the deadline'
+            'Gather relevant tax documents',
+            'Determine appropriate response',
+            'Meet any deadlines mentioned'
           ],
           riskLevel: 'MEDIUM',
           estimatedTimeToResolve: 90,
-          suggestedDocuments: ['TAX_RETURN', 'SUPPORTING_DOCUMENTS']
+          suggestedDocuments: ['TAX_RETURN', 'INCOME_DOCUMENTS', 'DEDUCTION_RECEIPTS']
         }
     }
 
@@ -106,36 +122,30 @@ export async function POST(
         summary: aiAnalysis.summary,
         explanation: aiAnalysis.explanation,
         actionItems: aiAnalysis.actionItems.join('\n'),
+        updatedAt: new Date()
       },
       include: {
-        client: true,
-        assignedTo: true,
-        createdBy: true
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
       }
     })
 
-    // Create automated tasks based on action items
-    for (const actionItem of aiAnalysis.actionItems) {
-      await db.task.create({
-        data: {
-          clientId: notice.clientId,
-          title: actionItem,
-          description: `Automated task for IRS notice ${notice.noticeNumber}`,
-          type: 'NOTICE_RESPONSE',
-          status: 'PENDING',
-          priority: aiAnalysis.riskLevel === 'HIGH' ? 'HIGH' : 'MEDIUM',
-          dueDate: new Date(Date.now() + (aiAnalysis.estimatedTimeToResolve * 60 * 1000)), // Convert minutes to ms
-          createdBy: notice.createdById,
-          assignedToId: notice.assignedToId
-        }
-      })
-    }
-
     return NextResponse.json({
       notice: updatedNotice,
-      analysis: aiAnalysis
+      aiAnalysis
     })
-
   } catch (error) {
     console.error('Error analyzing notice:', error)
     return NextResponse.json(

@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     const uniqueFileName = `${uuidv4()}.${fileExtension}`
     const filePath = join(uploadsDir, uniqueFileName)
 
-    // Save file to disk
+    // Convert file to buffer and save
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     await writeFile(filePath, buffer)
@@ -44,8 +44,8 @@ export async function POST(request: NextRequest) {
       data: {
         name: file.name,
         originalName: file.name,
-        type: documentType || 'OTHER',
-        category: categorizeDocument(documentType || 'OTHER'),
+        type: (documentType as any) || 'OTHER',
+        category: categorizeDocument(documentType || 'OTHER') as any,
         taxYear: taxYear ? parseInt(taxYear) : null,
         uploadedById,
         clientId: clientId || null,
@@ -61,16 +61,15 @@ export async function POST(request: NextRequest) {
           select: { id: true, name: true, email: true }
         },
         client: {
-          select: { id: true, clientId: true, firstName: true, lastName: true, businessName: true }
+          select: { id: true, name: true, email: true }
+        },
+        engagement: {
+          select: { id: true, title: true, status: true }
         }
       }
     })
 
-    // TODO: Perform AI classification and OCR extraction
-    // This would integrate with z-ai-web-dev-sdk for document processing
-
     return NextResponse.json(document, { status: 201 })
-
   } catch (error) {
     console.error('Error uploading document:', error)
     return NextResponse.json(
@@ -88,33 +87,55 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type')
     const category = searchParams.get('category')
     const taxYear = searchParams.get('taxYear')
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '20')
+    const search = searchParams.get('search')
 
-    let whereClause: any = {}
+    const where: any = {}
 
-    if (clientId) whereClause.clientId = clientId
-    if (engagementId) whereClause.engagementId = engagementId
-    if (type && type !== 'all') whereClause.type = type
-    if (category && category !== 'all') whereClause.category = category
-    if (taxYear) whereClause.taxYear = parseInt(taxYear)
+    if (clientId) where.clientId = clientId
+    if (engagementId) where.engagementId = engagementId
+    if (type) where.type = type
+    if (category) where.category = category
+    if (taxYear) where.taxYear = parseInt(taxYear)
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { originalName: { contains: search, mode: 'insensitive' } },
+        { ocrText: { contains: search, mode: 'insensitive' } }
+      ]
+    }
 
-    const documents = await db.document.findMany({
-      where: whereClause,
-      include: {
-        uploadedBy: {
-          select: { id: true, name: true, email: true }
+    const [documents, total] = await Promise.all([
+      db.document.findMany({
+        where,
+        include: {
+          uploadedBy: {
+            select: { id: true, name: true, email: true }
+          },
+          client: {
+            select: { id: true, name: true, email: true }
+          },
+          engagement: {
+            select: { id: true, title: true, status: true }
+          }
         },
-        client: {
-          select: { id: true, clientId: true, firstName: true, lastName: true, businessName: true }
-        },
-        engagement: {
-          select: { id: true, taxYear: true, type: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      db.document.count({ where })
+    ])
+
+    return NextResponse.json({
+      documents,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
     })
-
-    return NextResponse.json(documents)
-
   } catch (error) {
     console.error('Error fetching documents:', error)
     return NextResponse.json(
