@@ -1,17 +1,47 @@
 {
-  "name": "nextjs_tailwind_shadcn_ts",
-  "version": "0.2.0",
+  "name": "taxpro-practice-management",
+  "version": "1.0.0",
+  "description": "Comprehensive tax practice management platform for Enrolled Agents with AI-powered automation",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "type-check": "tsc --noEmit",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "db:seed": "bunx tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "postinstall": "prisma generate"
   },
+  "keywords": [
+    "tax",
+    "accounting",
+    "practice-management",
+    "enrolled-agent",
+    "irs",
+    "tax-returns",
+    "document-management",
+    "ai",
+    "automation",
+    "nextjs",
+    "typescript",
+    "prisma"
+  ],
+  "author": "TaxPro Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jitenkr2030/EA-Tax-Practice-Management-Platform.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jitenkr2030/EA-Tax-Practice-Management-Platform/issues"
+  },
+  "homepage": "https://github.com/jitenkr2030/EA-Tax-Practice-Management-Platform#readme",
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
