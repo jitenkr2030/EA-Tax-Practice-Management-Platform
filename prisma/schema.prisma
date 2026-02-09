@@ -1,8 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// Tax Practice Management Platform Schema
+// Comprehensive schema for Enrolled Agent practice management
 
 generator client {
   provider = "prisma-client-js"
@@ -13,20 +10,638 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// User Management with Role-Based Access Control
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String   @id @default(cuid())
+  email             String   @unique
+  name              String
+  passwordHash      String
+  role              UserRole @default(STAFF)
+  isActive          Boolean  @default(true)
+  lastLoginAt       DateTime?
+  twoFactorEnabled  Boolean  @default(false)
+  twoFactorSecret   String?
+  phone             String?
+  avatar            String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  clientProfiles    ClientProfile[]
+  assignedReturns   TaxReturn[]  @relation("AssignedReturns")
+  reviewedReturns   TaxReturn[]  @relation("ReviewedReturns")
+  tasks             Task[]
+  createdTasks      Task[]       @relation("CreatedTasks")
+  activityLogs      ActivityLog[]
+  assignedNotices   IRSNotice[]  @relation("AssignedNotices")
+  createdNotices    IRSNotice[]  @relation("CreatedNotices")
+  invoices          Invoice[]    @relation("UserInvoices")
+  createdInvoices   Invoice[]    @relation("CreatedInvoices")
+  uploadedDocuments Document[]   @relation("UploadedDocuments")
+  assignedEngagements Engagement[] @relation("AssignedEngagements")
+  createdTemplates  EmailTemplate[] @relation("CreatedTemplates")
+  createdBillingAgreements BillingAgreement[] @relation("CreatedBillingAgreements")
+  clientContacts    ClientProfile[] @relation("ClientContact")
+  sentCommunications Communication[] @relation("SentCommunications")
+  receivedCommunications Communication[] @relation("ReceivedCommunications")
+  
+  @@map("users")
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum UserRole {
+  OWNER      // Enrolled Agent (Owner)
+  REVIEWER   // Senior Reviewer
+  STAFF      // Staff Preparer
+  ADMIN      // Practice Admin
+  CLIENT     // Client Portal Access
+}
+
+// Client Management - Central source of truth
+model ClientProfile {
+  id                  String    @id @default(cuid())
+  clientId            String    @unique // Client identifier like CL-2024-001
+  type                ClientType
+  firstName           String?
+  lastName            String?
+  businessName        String?
+  email               String    @unique
+  phone               String?
+  ssn                 String?   // Encrypted
+  itin                String?   // Encrypted
+  filingStatus        FilingStatus?
+  entityType          String?   // LLC, S-Corp, C-Corp, Partnership, etc.
+  address             String?
+  city                String?
+  state               String?
+  zip                 String?
+  country             String?   @default("US")
+  primaryContactId    String?   // User ID if client has portal access
+  notes               String?   // Internal notes
+  internalComments    String?   // Private EA notes
+  isActive            Boolean   @default(true)
+  createdById         String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relations
+  createdBy           User      @relation(fields: [createdById], references: [id])
+  primaryContact      User?     @relation("ClientContact", fields: [primaryContactId], references: [id])
+  dependents          Dependent[]
+  engagements         Engagement[]
+  taxReturns          TaxReturn[]
+  documents           Document[]
+  communications      Communication[]
+  notices             IRSNotice[]
+  invoices            Invoice[]
+  billingAgreements   BillingAgreement[]
+  clientTasks         Task[]    @relation("ClientTasks")
+
+  @@map("client_profiles")
+}
+
+enum ClientType {
+  INDIVIDUAL
+  BUSINESS
+  TRUST
+  ESTATE
+}
+
+enum FilingStatus {
+  SINGLE
+  MARRIED_FILING_JOINTLY
+  MARRIED_FILING_SEPARATELY
+  HEAD_OF_HOUSEHOLD
+  QUALIFYING_WIDOW
+}
+
+// Dependents for individual clients
+model Dependent {
+  id              String    @id @default(cuid())
+  clientId        String
+  firstName       String
+  lastName        String
+  ssn             String?   // Encrypted
+  dateOfBirth     DateTime
+  relationship    String    // Child, Parent, etc.
+  isQualifying    Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  client          ClientProfile @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("dependents")
+}
+
+// Year-wise client engagements
+model Engagement {
+  id              String    @id @default(cuid())
+  clientId        String
+  taxYear         Int
+  type            EngagementType
+  status          EngagementStatus @default(PENDING)
+  assignedToId    String?
+  dueDate         DateTime
+  completedAt     DateTime?
+  feeAmount       Float?    // Using Float for SQLite compatibility
+  feePaid         Boolean   @default(false)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  client          ClientProfile @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  assignedTo      User?         @relation("AssignedEngagements", fields: [assignedToId], references: [id])
+  taxReturn       TaxReturn?
+  documents       Document[]
+  tasks           Task[]
+  invoices        Invoice[]    @relation("EngagementInvoices")
+
+  @@unique([clientId, taxYear, type])
+  @@map("engagements")
+}
+
+enum EngagementType {
+  FEDERAL_RETURN
+  STATE_RETURN
+  EXTENSION
+  AMENDMENT
+  ESTIMATE
+  NOTICE_RESPONSE
+  CONSULTATION
+}
+
+enum EngagementStatus {
+  PENDING
+  DOCUMENTS_PENDING
+  IN_PROGRESS
+  REVIEW
+  FILED
+  COMPLETED
+  CANCELLED
+}
+
+// Document Management System
+model Document {
+  id              String    @id @default(cuid())
+  clientId        String?
+  engagementId    String?
+  name            String
+  originalName    String
+  type            DocumentType
+  category        DocumentCategory
+  taxYear         Int?
+  uploadedById    String
+  fileUrl         String
+  fileSize        Int
+  mimeType        String
+  isVerified      Boolean   @default(false)
+  ocrText         String?   // Extracted text
+  aiClassification String?  // AI-detected document type
+  duplicateOfId   String?   // Reference to original if duplicate
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  client          ClientProfile? @relation(fields: [clientId], references: [id])
+  engagement      Engagement?    @relation(fields: [engagementId], references: [id])
+  uploadedBy      User           @relation("UploadedDocuments", fields: [uploadedById], references: [id])
+  duplicateOf     Document?      @relation("DocumentDuplicates", fields: [duplicateOfId], references: [id])
+  duplicates      Document[]     @relation("DocumentDuplicates")
+
+  @@map("documents")
+}
+
+enum DocumentType {
+  W2
+  W2G
+  FORM_1099_INT
+  FORM_1099_DIV
+  FORM_1099_B
+  FORM_1099_MISC
+  FORM_1099_NE
+  FORM_1099_R
+  FORM_1099_K1
+  FORM_1098
+  FORM_1098_T
+  FORM_1098_E
+  SCHEDULE_C
+  BANK_STATEMENT
+  INVOICE
+  RECEIPT
+  CONTRACT
+  ID_DOCUMENT
+  NOTICE
+  OTHER
+}
+
+enum DocumentCategory {
+  INCOME
+  DEDUCTION
+  CREDIT
+  IDENTITY
+  COMMUNICATION
+  LEGAL
+  FINANCIAL
+  OTHER
+}
+
+// Tax Return Workflow
+model TaxReturn {
+  id              String    @id @default(cuid())
+  clientId        String
+  engagementId    String    @unique
+  taxYear         Int
+  type            EngagementType
+  status          ReturnStatus @default(NEW)
+  assignedToId    String?
+  reviewerId      String?
+  priority        Priority   @default(MEDIUM)
+  federalResult   String?    // Refund/Balance Due amount
+  stateResult     String?
+  filedDate       DateTime?
+  acceptedDate    DateTime?
+  completionDate  DateTime?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  client          ClientProfile @relation(fields: [clientId], references: [id])
+  engagement      Engagement    @relation(fields: [engagementId], references: [id])
+  assignedTo      User?         @relation("AssignedReturns", fields: [assignedToId], references: [id])
+  reviewer        User?         @relation("ReviewedReturns", fields: [reviewerId], references: [id])
+  tasks           Task[]
+  forms           TaxForm[]
+
+  @@map("tax_returns")
+}
+
+enum ReturnStatus {
+  NEW
+  DOCUMENTS_PENDING
+  PREPARATION
+  REVIEW
+  READY_TO_FILE
+  FILED
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  ON_HOLD
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// Task Engine
+model Task {
+  id              String    @id @default(cuid())
+  taxReturnId     String?
+  clientId        String?
+  engagementId    String?
+  title           String
+  description     String?
+  type            TaskType
+  status          TaskStatus @default(PENDING)
+  priority        Priority   @default(MEDIUM)
+  assignedToId    String?
+  dueDate         DateTime?
+  completedAt     DateTime?
+  createdBy       String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  taxReturn       TaxReturn?     @relation(fields: [taxReturnId], references: [id])
+  client          ClientProfile? @relation("ClientTasks", fields: [clientId], references: [id])
+  assignedTo      User?          @relation(fields: [assignedToId], references: [id])
+  creator         User           @relation("CreatedTasks", fields: [createdBy], references: [id])
+  engagement      Engagement?    @relation(fields: [engagementId], references: [id])
+
+  @@map("tasks")
+}
+
+enum TaskType {
+  DOCUMENT_REQUEST
+  PREPARATION
+  REVIEW
+  FILING
+  FOLLOW_UP
+  CLIENT_CONTACT
+  NOTICE_RESPONSE
+  BILLING
+  ADMIN
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  OVERDUE
+}
+
+// IRS Notice Management
+model IRSNotice {
+  id              String    @id @default(cuid())
+  clientId        String
+  noticeType      String    // CP2000, CP14, etc.
+  noticeNumber    String?
+  receivedDate    DateTime
+  responseDue     DateTime
+  status          NoticeStatus @default(RECEIVED)
+  assignedToId    String?
+  summary         String?   // AI-generated summary
+  explanation     String?   // AI plain English explanation
+  actionItems     String?   // AI-suggested actions
+  documentUrl     String?
+  responseDraft   String?
+  responseSentAt  DateTime?
+  closedAt        DateTime?
+  notes           String?
+  createdById     String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  client          ClientProfile @relation(fields: [clientId], references: [id])
+  assignedTo      User?         @relation("AssignedNotices", fields: [assignedToId], references: [id])
+  createdBy       User          @relation("CreatedNotices", fields: [createdById], references: [id])
+
+  @@map("irs_notices")
+}
+
+enum NoticeStatus {
+  RECEIVED
+  IN_PROGRESS
+  DRAFTED
+  SENT
+  CLOSED
+  ESCALATED
+}
+
+// Communication Module
+model Communication {
+  id              String    @id @default(cuid())
+  clientId        String
+  type            CommunicationType
+  direction       CommunicationDirection
+  subject         String
+  content         String
+  templateId      String?
+  sentById        String?
+  sentToId        String?
+  sentAt          DateTime?
+  status          CommunicationStatus @default(DRAFT)
+  isSecure        Boolean   @default(true)
+  attachments     String?   // JSON array of document IDs
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  client          ClientProfile @relation(fields: [clientId], references: [id])
+  sentBy          User?         @relation("SentCommunications", fields: [sentById], references: [id])
+  sentTo          User?         @relation("ReceivedCommunications", fields: [sentToId], references: [id])
+  template        EmailTemplate? @relation("TemplateCommunications", fields: [templateId], references: [id])
+
+  @@map("communications")
+}
+
+enum CommunicationType {
+  EMAIL
+  PORTAL_MESSAGE
+  SMS
+  LETTER
+  INTERNAL_NOTE
+}
+
+enum CommunicationDirection {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
+enum CommunicationStatus {
+  DRAFT
+  SENT
+  DELIVERED
+  FAILED
+  READ
+}
+
+// Email Templates
+model EmailTemplate {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  subject         String
+  content         String
+  type            TemplateType
+  variables       String?   // JSON of template variables
+  isActive        Boolean   @default(true)
+  createdBy       String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  communications  Communication[] @relation("TemplateCommunications")
+  creator         User @relation("CreatedTemplates", fields: [createdBy], references: [id])
+
+  @@map("email_templates")
+}
+
+enum TemplateType {
+  DOCUMENT_REQUEST
+  FILING_CONFIRMATION
+  NOTICE_RESPONSE
+  PAYMENT_REQUEST
+  APPOINTMENT_REMINDER
+  WELCOME
+  GENERAL
+}
+
+// Billing Module
+model Invoice {
+  id              String    @id @default(cuid())
+  invoiceNumber   String    @unique
+  clientId        String
+  engagementId    String?
+  userId          String?
+  amount          Float     // Using Float for SQLite compatibility
+  taxAmount       Float     @default(0)
+  totalAmount     Float
+  status          InvoiceStatus @default(DRAFT)
+  dueDate         DateTime
+  paidAt          DateTime?
+  paymentMethod   String?
+  paymentId       String?   // Stripe payment ID
+  createdById     String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  client          ClientProfile @relation(fields: [clientId], references: [id])
+  engagement      Engagement?    @relation("EngagementInvoices", fields: [engagementId], references: [id])
+  createdBy       User           @relation("CreatedInvoices", fields: [createdById], references: [id])
+  user            User?          @relation("UserInvoices", fields: [userId], references: [id])
+  items           InvoiceItem[]
+  payments        Payment[]
+
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model InvoiceItem {
+  id              String    @id @default(cuid())
+  invoiceId       String
+  description     String
+  quantity        Int       @default(1)
+  unitPrice       Float     // Using Float for SQLite compatibility
+  amount          Float
+
+  invoice         Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_items")
+}
+
+model Payment {
+  id              String    @id @default(cuid())
+  invoiceId       String
+  amount          Float     // Using Float for SQLite compatibility
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  processorId     String?   // Stripe, etc.
+  processedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  invoice         Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+enum PaymentMethod {
+  STRIPE
+  ACH
+  CHECK
+  CASH
+  WIRE
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// Billing Agreements
+model BillingAgreement {
+  id              String    @id @default(cuid())
+  clientId        String
+  type            BillingType
+  feeStructure    FeeStructure
+  baseFee         Float?    // Using Float for SQLite compatibility
+  hourlyRate      Float?    // Using Float for SQLite compatibility
+  complexity      String?   // Simple, Moderate, Complex
+  terms           String?
+  isActive        Boolean   @default(true)
+  effectiveDate   DateTime
+  createdById     String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  client          ClientProfile @relation(fields: [clientId], references: [id])
+  createdBy       User           @relation("CreatedBillingAgreements", fields: [createdById], references: [id])
+
+  @@map("billing_agreements")
+}
+
+enum BillingType {
+  PER_RETURN
+  HOURLY
+  MONTHLY_RETAINER
+  ANNUAL_RETAINER
+}
+
+enum FeeStructure {
+  FIXED_FEE
+  HOURLY
+  COMPLEXITY_BASED
+  HYBRID
+}
+
+// Tax Forms Tracking
+model TaxForm {
+  id              String    @id @default(cuid())
+  taxReturnId     String
+  formNumber      String    // 1040, 1065, 1120, etc.
+  formType        FormType
+  status          FormStatus @default(PENDING)
+  data            String?   // JSON form data
+  pdfUrl          String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  taxReturn       TaxReturn @relation(fields: [taxReturnId], references: [id], onDelete: Cascade)
+
+  @@map("tax_forms")
+}
+
+enum FormType {
+  FEDERAL
+  STATE
+  AMENDMENT
+  EXTENSION
+  SUPPLEMENTAL
+}
+
+enum FormStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FILED
+  ACCEPTED
+  REJECTED
+}
+
+// Compliance & Audit Safety
+model ActivityLog {
+  id              String    @id @default(cuid())
+  userId          String
+  action          String    // CREATE, READ, UPDATE, DELETE
+  resourceType    String    // CLIENT, DOCUMENT, RETURN, etc.
+  resourceId      String
+  details         String?   // JSON of changes
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime  @default(now())
+
+  user            User @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
+}
+
+// Settings
+model PracticeSettings {
+  id              String    @id @default(cuid())
+  firmName        String
+  firmEmail       String
+  firmPhone       String?
+  firmAddress     String?
+  ein             String?   // Firm EIN
+  ptin            String?   // Preparer Tax Identification Number
+  timezone        String    @default("America/New_York")
+  currency        String    @default("USD")
+  taxYear         Int       @default(2024)
+  autoBackup      Boolean   @default(true)
+  retentionDays   Int       @default(2555) // 7 years IRS requirement
+  mfaRequired     Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("practice_settings")
 }
